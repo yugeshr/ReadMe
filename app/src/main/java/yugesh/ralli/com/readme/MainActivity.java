@@ -1,6 +1,9 @@
 package yugesh.ralli.com.readme;
 
 import android.Manifest;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
@@ -18,13 +21,13 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
 import androidx.appcompat.app.AppCompatActivity;
-
 import android.os.Bundle;
 import android.speech.tts.TextToSpeech;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
+import android.view.View;
 import android.widget.TextView;
 import android.widget.Toast;
 import com.google.android.gms.tasks.Task;
@@ -57,24 +60,30 @@ public class MainActivity extends AppCompatActivity implements TextToSpeech.OnIn
     private final int PERMISSION_REQUEST_STORAGE = 2;
     private final int TTS_CHECK_CODE = 3;
 
-    private String mCurrentPhotoPath, resultText, docName;
+    private String mCurrentPhotoPath, resultText;
     private Bitmap mSelectedImage;
     private TextToSpeech textToSpeech;
+
+    int PERMISSION_ALL = 1;
+    String[] PERMISSIONS = {
+            android.Manifest.permission.READ_CONTACTS,
+            android.Manifest.permission.WRITE_CONTACTS,
+            android.Manifest.permission.WRITE_EXTERNAL_STORAGE,
+            android.Manifest.permission.READ_SMS,
+            android.Manifest.permission.CAMERA
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        //checkDataFiles();
-        checkCameraPermission();
+        if(!hasPermissions(this, PERMISSIONS)){
+            ActivityCompat.requestPermissions(this, PERMISSIONS, PERMISSION_ALL);
+        }
+
         //checkTTS
         checkTTS();
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
-                checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE},PERMISSION_REQUEST_STORAGE);
-        }
 
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
 
@@ -84,15 +93,28 @@ public class MainActivity extends AppCompatActivity implements TextToSpeech.OnIn
         btn_photo.setOnClickListener(view -> {
             cropImage();
         });
+
+        textView.setOnLongClickListener(new View.OnLongClickListener() {
+            @Override
+            public boolean onLongClick(View v) {
+                ClipboardManager clipboard=(ClipboardManager)getApplicationContext().getSystemService(Context.CLIPBOARD_SERVICE);
+                ClipData clipData = ClipData.newPlainText("copy",textView.getText().toString());
+                clipboard.setPrimaryClip(clipData);
+                Toast.makeText(getApplicationContext(),"Copied to clipboard",Toast.LENGTH_SHORT).show();
+                return false;
+            }
+        });
     }
 
-    private void checkCameraPermission() {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
-                != PackageManager.PERMISSION_GRANTED){
-            // Permission is not granted
-            ActivityCompat.requestPermissions(this,
-                    new String[]{Manifest.permission.CAMERA},PERMISSION_REQUEST_CAMERA);
+    public static boolean hasPermissions(Context context, String... permissions) {
+        if (context != null && permissions != null) {
+            for (String permission : permissions) {
+                if (ActivityCompat.checkSelfPermission(context, permission) != PackageManager.PERMISSION_GRANTED) {
+                    return false;
+                }
+            }
         }
+        return true;
     }
 
     @Override
@@ -100,58 +122,17 @@ public class MainActivity extends AppCompatActivity implements TextToSpeech.OnIn
         switch (requestCode) {
             case PERMISSION_REQUEST_CAMERA:
                 if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    Toast.makeText(getApplicationContext(), "Permission Granted, Now you can access Camera", Toast.LENGTH_SHORT).show();
+                    //Toast.makeText(getApplicationContext(), "Permission Granted, Now you can access Camera", Toast.LENGTH_SHORT).show();
                 } else {
-                    Toast.makeText(getApplicationContext(), "Permission Denied, You cannot access Camera.", Toast.LENGTH_SHORT).show();
+                    //Toast.makeText(getApplicationContext(), "Permission Denied, You cannot access Camera.", Toast.LENGTH_SHORT).show();
                 }
             case PERMISSION_REQUEST_STORAGE:
                 if (grantResults.length == PackageManager.PERMISSION_GRANTED){
-                    Toast.makeText(getApplicationContext(), "Permission Granted, Now you can access Storage", Toast.LENGTH_SHORT).show();
+                    //Toast.makeText(getApplicationContext(), "Permission Granted, Now you can access Storage", Toast.LENGTH_SHORT).show();
                 } else {
-                    Toast.makeText(getApplicationContext(), "Permission Denied, Now you canot access Storage", Toast.LENGTH_SHORT).show();
+                    //Toast.makeText(getApplicationContext(), "Permission Denied, Now you canot access Storage", Toast.LENGTH_SHORT).show();
                 }
         }
-    }
-
-    private void dispatchTakePictureIntent() throws IOException {
-        Intent takePictureIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
-        if (takePictureIntent.resolveActivity(getPackageManager()) != null) {
-            File photoFile = createImageFile();
-            if (photoFile != null) {
-                Uri photoURI = FileProvider.getUriForFile(getApplicationContext(),
-                        "yugesh.ralli.com.readme.fileprovider",
-                        photoFile);
-                takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT, photoURI);
-                startActivityForResult(takePictureIntent, REQUEST_TAKE_PHOTO);
-            }
-        }
-    }
-
-    private File createImageFile() throws IOException {
-        // Create an image file name
-        String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
-        String imageFileName = "JPEG_" + timeStamp + "_";
-        docName = imageFileName;
-        File storageDir = getExternalFilesDir(Environment.DIRECTORY_PICTURES);
-        File image = File.createTempFile(
-                imageFileName,  /* prefix */
-                ".jpg",         /* suffix */
-                storageDir      /* directory */
-        );
-        // Save a file: path for use with ACTION_VIEW intents
-        mCurrentPhotoPath = image.getAbsolutePath();
-        galleryAddPic();
-        return image;
-    }
-
-    private void galleryAddPic() {
-        Intent mediaScanIntent = new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE);
-        Log.d("TAG",mCurrentPhotoPath);
-        File f = new File(mCurrentPhotoPath);
-        Uri contentUri = Uri.fromFile(f);
-        cropImage();
-        mediaScanIntent.setData(contentUri);
-        this.sendBroadcast(mediaScanIntent);
     }
 
     private void cropImage() {
@@ -180,6 +161,7 @@ public class MainActivity extends AppCompatActivity implements TextToSpeech.OnIn
             if (resultCode == RESULT_OK) {
                 Uri resultUri = result.getUri();
                 File imageFile = new File(resultUri.getPath());
+                Log.d("TAG",resultUri.getPath());
                 Bitmap imageBitmap = BitmapFactory.decodeFile(imageFile.getPath());
                 mSelectedImage = imageBitmap; //rotateImageIfRequired(imageBitmap,imageFile);
                 recogniseText();
@@ -210,7 +192,7 @@ public class MainActivity extends AppCompatActivity implements TextToSpeech.OnIn
         resultText = firebaseVisionText.getText();
         Log.d("TAG",resultText);
         textView.setText(resultText);
-        saveTextAsFile("temp",resultText);
+        saveTextAsFile(resultText);
         identifyLanguage(resultText);
         for (FirebaseVisionText.TextBlock block: firebaseVisionText.getTextBlocks()) {
             String blockText = block.getText();
@@ -235,10 +217,16 @@ public class MainActivity extends AppCompatActivity implements TextToSpeech.OnIn
         }
     }
 
-    private void saveTextAsFile(String filename, String content){
-        String fileName = docName + ".txt";
+    private String createFileName(){
+        // Create an text file name
+        String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
+        return "TEXT_" + timeStamp;
+    }
 
-        File file = new File(Environment.getExternalStorageDirectory().getAbsolutePath(),fileName);
+    private void saveTextAsFile(String content){
+        String fileName = createFileName() + ".txt";
+        Log.d("TAG",fileName);
+        File file = new File(Environment.getExternalStorageDirectory().getAbsolutePath()+"/ReadMe/Text files",fileName);
 
         FileOutputStream fileOutputStream = null;
         try {
@@ -312,8 +300,14 @@ public class MainActivity extends AppCompatActivity implements TextToSpeech.OnIn
     public boolean onOptionsItemSelected(MenuItem item) {
         int id = item.getItemId();
         switch (id){
-            case R.id.action_tts : textToSpeech.speak(resultText,TextToSpeech.QUEUE_ADD,null);
-            case R.id.action_stop : textToSpeech.stop();
+            case R.id.action_tts : {
+                textToSpeech.speak(resultText,TextToSpeech.QUEUE_ADD,null);
+                break;
+            }
+            case R.id.action_stop : {
+                textToSpeech.stop();
+                break;
+            }
         }
         return super.onOptionsItemSelected(item);
     }
